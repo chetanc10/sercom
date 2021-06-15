@@ -59,7 +59,7 @@ SCOM_sleep 0.5
 SCOM_loopend
 
 # Uncomment the following to enable ManualCmd mode for manually enter commands
-#enman
+#SCOM_enman
 
 # Trying an non-existent scom file to see how script reacts
 SCOM_enscom 1.scom
