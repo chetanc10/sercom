@@ -1,30 +1,36 @@
 # Any line in scom file falls under one of the following categories:
-# 1. scom command - command to control sercom execution (marked as SCOM_KNOWN)
+# 1. scom command - command to control sercom execution (marked as SCOM_)
 # 2. comment - Any line starting with '#' is treated as don't care
-# 3. modem command - if any line is uncommented and is not SCOM_KNOWN, then it is treated as modem command and sent out to modem. So scom writer MUST ENSURE that only modem commands are uncommented and any other alhpanumeric sequence like explanation, description, unwanted-modem-command, etc are commented
+# 3. modem command - if any line is uncommented and is not starting with SCOM_, then it is treated as modem command and sent out to modem. So scom writer MUST ENSURE that only modem commands are uncommented and any other alhpanumeric sequence like explanation, description, unwanted-modem-command, etc are commented
 #
-# SCOM_KNOWN: scom_enman
+# SCOM_enman
 # When script encounters above cmd at start of a new line, ManualCmd mode is enabled and Scom mode will be stopped
 #
-# SCOM_KNOWN: scom_enscom <path-including-scom-file.scom>
+# SCOM_enscom <path-including-scom-file.scom>
 # When script encounters above cmd at start of a new line, and if the file-path is valid, Scom mode is kept in alive to execute commands from the new scom file
 #
-# SCOM_KNOWN: scom_break
+# SCOM_break
 # When script encounters above cmd at start of a new line, it stops current Scom mode - any further commands in file will not be read/executed. It's like a repositionable EOF and can be used during development of advanced Scom test sequences in scom files.
 #
-# SCOM_KNOWN: scom_loopbegin [iter=number-of-iterations]
+# SCOM_loopbegin [iter=number-of-iterations]
 # When script encounters above cmd at start of a new line, it understands a loop is needed and optionally notes down the number of iterations and breaks the loop after that number of iterations, if given
 #
-# SCOM_KNOWN: scom_loopend
+# SCOM_loopend
 # When script encounters above cmd at start of a new line, it notes down loop-iteration-ending.
 #
-# SCOM_KNOWN: scom_sleep <n>[.m]
+# SCOM_sleep <n>[.m]
 # When script encounters above cmd at start of a new line, it sleeps for n seconds and optionally for m milliseconds, if specified. Default sleep time is 1
 #
-# SCOM_KNOWN: scom_expect <substring>
-# When script encounters above cmd at start of a new line, it tries to match the response buffer of immediately previous modem command. scom supports just one 'scom_expect' per modem command
+# SCOM_expect <action> <substring>
+# When script encounters above cmd at start of a new line, it tries to match the response buffer of immediately previous modem command. scom supports just one 'SCOM_expect' per modem command
+# <action> can be any of the following - 
+# 1. SCOM_BrkOnMatch     - used for loops, break the loop when match found.
+#                          if not in loop, this is don't care
+# 2. SCOM_BreakOnNoMatch - used for loops, break the loop when match not found
+#                          if not in loop, this is don't care
+# 3. SCOM_RmLineOnMatch  - used anywhere in scom, this removes line (ending with \r\n) that contains a pattern (this can help continuous async serial data recv'd to be discarded as and when required)
 #
-# So if any of the SCOM_KNOWN commands are encountered (and validated), the script may then stop reading further from the current scom file as it switches to different mode accordingly.
+# So if any of the 'SCOM_' type commands are encountered (and validated), the script may then stop reading further from the current scom file as it switches to different mode accordingly.
 #
 
 # A good thing to have for any test is to log the version info of SW and HW as much as possible 
@@ -47,50 +53,50 @@ at#portcfg?
 #at#wlanstart=1
 
 # A definitive loop now iterating for 10 times
-scom_loopbegin iter=2
+SCOM_loopbegin iter=2
 at#wlanscan=0
-scom_sleep 0.5
-scom_loopend
+SCOM_sleep 0.5
+SCOM_loopend
 
 # Uncomment the following to enable ManualCmd mode for manually enter commands
 #enman
 
 # Trying an non-existent scom file to see how script reacts
-scom_enscom 1.scom
+SCOM_enscom 1.scom
 
-# Break the Scom session and any command after scom_break will not be executed!
-scom_break
+# Break the Scom session and any command after SCOM_break will not be executed!
+SCOM_break
 
-########## ALL THE FOLLOWING ARE NOT EXECUTED SINCE WE GAVE 'scom_break' above
+########## ALL THE FOLLOWING ARE NOT EXECUTED SINCE WE GAVE 'SCOM_break' above
 
 # Demo Chaining of scom
-scom_enscom child.scom
+SCOM_enscom child.scom
 
 at#rndis?
 
 # This is just an example to help understand scom for an automated and large number of tests divided/grouped as per feature/test-case
-scom_enscom ~/softap/security/openap.scom
-scom_enscom ~/station/security/wpa2.scom
+SCOM_enscom ~/softap/security/openap.scom
+SCOM_enscom ~/station/security/wpa2.scom
 
 # We have multiple methods to run multiple scoms in one run as described below.
 #
-# 1. FIFO Model - Simply have a mother scom file calling to multiple children scom files with scom_enscom command in required order. In a simple FIFO-model child scom file(s) will not contain scom_enscom command.
+# 1. FIFO Model - Simply have a mother scom file calling to multiple children scom files with SCOM_enscom command in required order. In a simple FIFO-model child scom file(s) will not contain SCOM_enscom command.
 # e.g. FIFO Model below
 # example.scom is mother scom with following lines
-scom_enscom openap.scom
-scom_enscom wpa2ap.scom
-scom_enscom wpa3ap.scom
-# For above, script sees 'scom_enscom openap.scom' and switches to openap.scom and once openap.scom completes, it comes back to open mother scom (example.scom in this case), and positions read-line to next to 'scom_enscom openap.scom', i.e. it will now read line 'scom_enscom wpa2ap.scom' and so on till scom FIFO is complete
+SCOM_enscom openap.scom
+SCOM_enscom wpa2ap.scom
+SCOM_enscom wpa3ap.scom
+# For above, script sees 'SCOM_enscom openap.scom' and switches to openap.scom and once openap.scom completes, it comes back to open mother scom (example.scom in this case), and positions read-line to next to 'SCOM_enscom openap.scom', i.e. it will now read line 'SCOM_enscom wpa2ap.scom' and so on till scom FIFO is complete
 
 # 2. Daisy Chain - a mother scom will call to child1 scom file. child1 scom calls to child2 scom at it's EOF and so on. 
 # e.g. Daisy Chain below
 # example.scom is mother scom with EOF content below
-scom_enscom openap.scom
+SCOM_enscom openap.scom
 # openap.scom EOF content below
-scom_enscom wpa2ap.scom
+SCOM_enscom wpa2ap.scom
 # wpa2ap.scom EOF content below
-scom_enscom wpa3ap.scom
-# For above, script sees 'scom_enscom openap.scom' and switches to openap.scom and inside openap.scom it will encounter 'scom_enscom wpa2ap.scom' and switches to wpa2ap.scom and so on.
+SCOM_enscom wpa3ap.scom
+# For above, script sees 'SCOM_enscom openap.scom' and switches to openap.scom and inside openap.scom it will encounter 'SCOM_enscom wpa2ap.scom' and switches to wpa2ap.scom and so on.
 
 # 3. Hybrid Chain -  a Hybrid model created by mixing FIFO model with Daisy-chain models, if carefully used, it would work as expected.
 
