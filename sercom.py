@@ -261,6 +261,7 @@ def HandleManualCmds () :
         Cmd = ReadConsoleInput ("")
         if len (Cmd) == 0 : continue
         elif Cmd[0:5] == "break" :
+            # TODO use SCOM_break and SCOM_enscom for standard cmd parsing
             gManualEn = False
             print ("-----------------")
             break
@@ -270,8 +271,11 @@ def HandleManualCmds () :
                 slogprint ("Scom file not found or invalid - " \
                         + arg + "\nContinuing in Manual Cmd mode..")
                 continue
-            gScomEn = True
+            # TODO Handle -m -s, enscom 1.scom, break manual exiting script!
             gScomFile = arg
+            oldScomEn = gScomEn
+            HandleScomCmds ()
+            gScomEn = oldScomEn
             break
         else :
             # Not Manual-mode control command, send to modem and get response
@@ -384,10 +388,8 @@ def SwitchToMotherScom (ScomFH, reason) :
 # Usage  : HandleScomCmds ()
 # Return : None
 def HandleScomCmds () :
-    global gScomEn
     global gScomFile
     global gOldScoms
-    global gManualEn
 
     ScomFH = open (gScomFile, 'r')
     while 1 :

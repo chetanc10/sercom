@@ -7,3 +7,4 @@ com.log
 *.conf
 !example.scom
 !child.scom
+!sample.conf
