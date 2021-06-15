@@ -63,6 +63,7 @@ SCOM_loopend
 
 # Trying an non-existent scom file to see how script reacts
 SCOM_enscom 1.scom
+SCOM_enscom child.scom
 
 # Break the Scom session and any command after SCOM_break will not be executed!
 SCOM_break
