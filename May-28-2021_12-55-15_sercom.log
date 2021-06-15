@@ -1,0 +1,6 @@
+May 28 12:55:15 [AO] 'AT\r'
+May 28 12:55:15 [AI] 'OK\r\n'
+May 28 12:55:18 [MO] 'at#usbcfg?\r'
+May 28 12:55:19 [MI] '#USBCFG: 1\r\n\r\nOK\r\n'
+May 28 12:55:21 [MO] 'at&v\r'
+May 28 12:55:21 [MI] '\r\nDTE SPEED                      : 115200\r\nDTE FORMAT                     : 8N1\r\nGSM DATA MODE                  : Not Transparent\r\nAUTOBAUD                       : +IPRxxx00=NO             \r\nCOMMAND ECHO                   : E1=YES            \r\nRESULT MESSAGES                : Q0=YES            \r\nVERBOSE MESSAGES               : V1=YES            \r\nEXTENDED MESSAGES              : X1=YES            \r\nLINE SPEED                     : F0=autodetect     \r\nCONSTANT DTE SPEED             : YES            \r\nFLOW CONTROL OPTIONS           : &K3=HW bidirect.   \r\nERROR CORRECTION MODE          : RLP            \r\nCTS (C106) OPTIONS             : &B2=OFF while disc.\r\nDSR (C107) OPTIONS             : &S3=PHONE ready->ON\r\nDTR (C108) OPTIONS             : &D0=ignored        \r\nDCD (C109) OPTIONS             : &C1=follows carrier\r\nRI (C125) OPTIONS              : \\R1=OFF dur. off-hk\r\nC108/1 OPERATION               : &D0=NO             \r\nPOWER SAVING ON DTR            : +CFUN:1=NO             \r\nDEFAULT PROFILE                : &Y0=user profile 1 \r\n\r\nOK\r\n'
