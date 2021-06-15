@@ -1,0 +1,61 @@
+# All lines that do not start with AT/at are expected to be empty or starting with '#'(marking line as comment) except the following script-control commands
+#
+# KNOWN: EnableManualCmd
+# When script encounters above cmd at start of a new line, ManualCmd mode is enabled and AutoCmd mode will be stopped
+#
+# KNOWN: EnableAutoCmd <path-including-AutoCmdFile.scom-name>
+# When script encounters above cmd at start of a new line, and if the file-path is valid, AutoCmd mode is kept in alive to execute commands from the new scom file
+#
+# KNOWN: break
+# When script encounters above cmd at start of a new line, it stops current AutoCmd mode - any further commands in file will not be read/executed. It's like a repositionable EOF and can be used during development of advanced AutoCmd test sequences in scom files.
+#
+# KNOWN: loopbegin [iter=number-of-iterations]
+# When script encounters above cmd at start of a new line, it understands a loop is needed and optionally notes down the number of iterations and breaks the loop after that number of iterations, if given
+#
+# KNOWN: loopend
+# When script encounters above cmd at start of a new line, it notes down loop-iteration-ending.
+#
+# KNOWN: sleep <n>[.m]
+# When script encounters above cmd at start of a new line, it sleeps for n seconds and optionally for m milliseconds, if specified. Default sleep time is 1
+#
+# So if any of the KNOWN commands are envountered (and validated), the script may then stop reading further from the current scom file as it switches to different mode accordingly.
+# If the script encounters a string that is not at/AT or none of the KNOWN commands, it will discard such string and continues execution. So it's advised to have each line with only at/AT commands or KNOWN commands only here and any other statement to be starting with '#'
+#
+
+# A good thing to have for any test is to log the version info of SW and HW as much as possible 
+at#swpkgv
+
+# Next good thing to do is to enable verbose error reporting
+at+cmee=2
+
+# Get various environment details now from the modem
+# - Serial Interface Configuuration
+# - USB Configuration
+# - Port Configuration
+at&v0
+at#usbcfg?
+at#portcfg?
+
+# Now we start a sequence of commands to achieve/use a specific functionality
+at#connmgrstart=1,0
+at#isel=1
+at#wlanmode=1
+at#wlanstart=1
+#at#wlanscan=0
+
+# A definitive loop now iterating for 10 times
+loopbegin iter=3
+at#wlanscan=0
+at#wlanip
+sleep 0.5
+loopend
+
+# Uncomment the following to enable ManualCmd mode for manually enter commands
+#EnableManualCmd
+
+# Break the AutoCmd session and any command after break will not be executed!
+break
+
+# Following are as good as commented since we gave 'break' command above
+at#rndis?
+at+clac
