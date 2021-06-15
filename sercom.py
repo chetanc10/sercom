@@ -321,7 +321,6 @@ def DoAutoLoopScomCmds (Cmd, ScomFH) :
             args.append (gSerPort)
             args.append (Cmd)
             ACLFlist.append (partial (ACL_HandleSerCmd, *args))
-            Resp = HandleCmdAndGetResp (gSerPort, Cmd, CmdFromScript)
 
     # There may be multiple causes of failure above. Check and act accordingly
     if RetVal != 0 :
