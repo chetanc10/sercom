@@ -1,13 +1,13 @@
-# All lines that do not start with AT/at are expected to be empty or starting with '#'(marking line as comment) except the following script-control commands
+# All lines that do not start with AT/at are expected to be don't care or junk values or empty or starting with '#'(marking line as comment) except the following script-control commands
 #
-# KNOWN: EnableManualCmd
-# When script encounters above cmd at start of a new line, ManualCmd mode is enabled and AutoCmd mode will be stopped
+# KNOWN: enman
+# When script encounters above cmd at start of a new line, ManualCmd mode is enabled and Scom mode will be stopped
 #
-# KNOWN: EnableAutoCmd <path-including-AutoCmdFile.scom-name>
-# When script encounters above cmd at start of a new line, and if the file-path is valid, AutoCmd mode is kept in alive to execute commands from the new scom file
+# KNOWN: enscom <path-including-scom-file.scom>
+# When script encounters above cmd at start of a new line, and if the file-path is valid, Scom mode is kept in alive to execute commands from the new scom file
 #
 # KNOWN: break
-# When script encounters above cmd at start of a new line, it stops current AutoCmd mode - any further commands in file will not be read/executed. It's like a repositionable EOF and can be used during development of advanced AutoCmd test sequences in scom files.
+# When script encounters above cmd at start of a new line, it stops current Scom mode - any further commands in file will not be read/executed. It's like a repositionable EOF and can be used during development of advanced Scom test sequences in scom files.
 #
 # KNOWN: loopbegin [iter=number-of-iterations]
 # When script encounters above cmd at start of a new line, it understands a loop is needed and optionally notes down the number of iterations and breaks the loop after that number of iterations, if given
@@ -17,6 +17,9 @@
 #
 # KNOWN: sleep <n>[.m]
 # When script encounters above cmd at start of a new line, it sleeps for n seconds and optionally for m milliseconds, if specified. Default sleep time is 1
+#
+# KNOWN: expect <substring>
+# When script encounters above cmd at start of a new line, it tries to match the response buffer of immediately previous modem command. scom supports just one 'expect' per modem command
 #
 # So if any of the KNOWN commands are envountered (and validated), the script may then stop reading further from the current scom file as it switches to different mode accordingly.
 # If the script encounters a string that is not at/AT or none of the KNOWN commands, it will discard such string and continues execution. So it's advised to have each line with only at/AT commands or KNOWN commands only here and any other statement to be starting with '#'
@@ -32,30 +35,61 @@ at+cmee=2
 # - Serial Interface Configuuration
 # - USB Configuration
 # - Port Configuration
-at&v0
 at#usbcfg?
 at#portcfg?
 
 # Now we start a sequence of commands to achieve/use a specific functionality
-at#connmgrstart=1,0
-at#isel=1
-at#wlanmode=1
-at#wlanstart=1
-#at#wlanscan=0
+#at#connmgrstart=1,0
+#at#isel=1
+#at#wlanmode=1
+#at#wlanstart=1
 
 # A definitive loop now iterating for 10 times
-loopbegin iter=3
+loopbegin iter=2
 at#wlanscan=0
-at#wlanip
 sleep 0.5
 loopend
 
 # Uncomment the following to enable ManualCmd mode for manually enter commands
-#EnableManualCmd
+#enman
 
-# Break the AutoCmd session and any command after break will not be executed!
+# Trying an non-existent scom file to see how script reacts
+enscom 1.scom
+
+# Break the Scom session and any command after break will not be executed!
 break
 
-# Following are as good as commented since we gave 'break' command above
+########## ALL THE FOLLOWING ARE NOT EXECUTED SINCE WE GAVE 'break' above
+
+# Demo Chaining of scom
+enscom child.scom
+
 at#rndis?
-at+clac
+
+# This is just an example to help understand scom for an automated and large number of tests divided/grouped as per feature/test-case
+enscom ~/softap/security/openap.scom
+enscom ~/station/security/wpa2.scom
+
+# We have multiple methods to run multiple scoms in one run as described below.
+#
+# 1. FIFO Model - Simply have a mother scom file calling to multiple children scom files with enscom command in required order. In a simple FIFO-model child scom file(s) will not contain enscom command.
+# e.g. FIFO Model below
+# example.scom is mother scom with following lines
+enscom openap.scom
+enscom wpa2ap.scom
+enscom wpa3ap.scom
+# For above, script sees 'enscom openap.scom' and switches to openap.scom and once openap.scom completes, it comes back to open mother scom (example.scom in this case), and positions read-line to next to 'enscom openap.scom', i.e. it will now read line 'enscom wpa2ap.scom' and so on till scom FIFO is complete
+
+# 2. Daisy Chain - a mother scom will call to child1 scom file. child1 scom calls to child2 scom at it's EOF and so on. 
+# e.g. Daisy Chain below
+# example.scom is mother scom with EOF content below
+enscom openap.scom
+# openap.scom EOF content below
+enscom wpa2ap.scom
+# wpa2ap.scom EOF content below
+enscom wpa3ap.scom
+# For above, script sees 'enscom openap.scom' and switches to openap.scom and inside openap.scom it will encounter 'enscom wpa2ap.scom' and switches to wpa2ap.scom and so on.
+
+# 3. Hybrid Chain -  a Hybrid model created by mixing FIFO model with Daisy-chain models, if carefully used, it would work as expected.
+
+This is junk the script will ignore, but please do not give junk without '#' for readability's sake!

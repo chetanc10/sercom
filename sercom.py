@@ -1,33 +1,48 @@
 #!/bin/env python
 
-sercomUsageStr = "\n\
+SercomUsageStr = "\n\
 Usage: sercom.py <args> [optionals]\n\
 args:\n\
      -d <Device#>   : Linux - /dev/ttyx of detected serial port (check dmesg|tail)\n\
                       Windows - COMx of detected serial port (check Device Manager)\n\
 optionals: If any optional is not given, corresponsing Default setting is applied\n\
-     -a <AutoCmdFile> : Automatic command sequence to be taken from a .scom type file\n\
-                      Default - No Auto commands are applicable\n\
+     -s <ScomFile>  : .scom type file containing automatic command sequence\n\
+                      SCOM - Serial Communication via text based syntactical file\n\
+                      Default - No Scom commands are applicable\n\
                       NOTE: .scom file has specific syntax.\n\
-                            It can force enable Manual command entry with ''.\n\
+                            It can force enable Manual command entry with 'enman'.\n\
                             Refer example.scom for help\n\
-     -m             : Force enable Manual entry of commands from stdin console\n\
-                      Default - Enabled if NO valid Auto-Command-Sequence is selected\n\
-                              - Disabled if a valid Auto-Command-Sequence is selected\n\
-                      NOTE: It can even enable Auto command mode with 'AutoCmd'.\n\
+     -m             : Enable Manual entry of commands from stdin console\n\
+                      Default - Disabled if -s Scom is used\n\
+                              - Enabled if -s Scom is not used\n\
+                      NOTE: It can even enable Scom with 'enscom' stdin input.\n\
      -b <BaudRate>  : Baud rate of serial port device\n\
                       Default - 115200\n\
+     -c <PortConfig>: Serial port configuration file other than Baud rate\n\
+                      Expected parameters in PortConfig (refer sample.conf) - \n\
+                          bytesz=[5|6|7|8]\n\
+                          parity=[N|E|O|M|S]\n\
+                          stpbit=[1|1.5|2]\n\
+                          rdtout=[float-value]\n\
+                          flowct=[N|X|R|D]\n\
+                          wrtout=[float-value]\n\
      -l             : Enables logging of commands/responses into com.log in PWD\n\
-                      If not specified, logging is disabled\n\
                       Default - Disabled\n\
+                      Logging format per line is as follows -\n\
+                      <Date> <Time> [{A}uto|{M}anual {I}nput|{O}utput] 'Serial Data' \n\
+                      e.g.\n\
+                      May 27 14:24:50 [AO] 'AT\\r' \n\
 NOTE:\n\
-1. To (re-)enable AutoCmd mode from Manual or Auto mode (one AutoCmd run disables AutoCmd mode), use following cmd in Manual command line and at End of AutCmdFile : EnableAutoCmd <path-to-AutoCmd-File>\n\
-1. To (re-)enable ManualCmd mode from Auto mode, use following cmd at End of AutoCmdFile: EnableManualCmd\n\
+1. To (re-)enable Scom mode from Manual or Scom mode (one Scom run disables scom mode), use following cmd in Manual command line and at End of AutCmdFile : enscom <path-to-Scom-File>\n\
+2. To (re-)enable ManualCmd mode from Scom mode, use following cmd at End of ScomFile: enman\n\
+3. If both scom and manual modes are requested, manual mode runs first and then scom\n\
+4. Any script specific error-messages are tagged as '***SERCOM'\n\
 "
 
 ######################### Import required python modules/submodules
 import os
 import sys
+import math
 import serial
 import time
 import re
@@ -52,21 +67,37 @@ from serial import Serial
 ######################### Serial-Port-Handler-Environment (SENV)
 
 ### Environment setup/control
-# refer -d option in sercomUsageStr
+# refer -d option in SercomUsageStr
 gSerPortID = "undefined"
-# refer -a option in sercomUsageStr
-gAutoCmdEnabled = False
-# Auto Command container file path/name
-gAutoCmdFile = "undefined"
-# refer -m option in sercomUsageStr
-gManualCmdEnabled = 1
-# refer -b option in sercomUsageStr
-gBaudRate = 115200
+# refer -a option in SercomUsageStr
+gScomEnabled = False
+# Current Scom filename being executed
+gScomFile = "undefined"
+# Scom filename stack for old Scom files (used to handle Scom Chains)
+gOldScoms = []
+# refer -m option in SercomUsageStr
+gManualCmdEnabled = "enabled"
+# refer -b option in SercomUsageStr
+gSerBaud = 115200
+# refer -c option in SercomUsageStr
+gSerPortCfgFile = "undefined"
+# refer -c option in SercomUsageStr
+gSerByteSize = 8
+# refer -c option in SercomUsageStr
+gSerParity = 'N'
+# refer -c option in SercomUsageStr
+gSerStopBits = 1
+# refer -c option in SercomUsageStr
+gSerRdTimeout = 0.001
+# refer -c option in SercomUsageStr
+gSerFlowCtrl = None
+# refer -c option in SercomUsageStr
+gSerWrTimeout = 0.01
 # Logging control
 gLoggingEnabled = False
 # Timeout for full response reception with OK/ERROR
 gFullRespTout = 20
-# Response timeout indication flag set/unset for every fresh ATCmdResp session
+# Response timeout indication flag set/unset for every fresh CmdResp session
 gRespTimedOut = False
 
 ### Other types/variables used internally 
@@ -80,7 +111,7 @@ gLogger = 1
 # Name of Log file name
 gLogFileName = "com.log"
 # List of allowed baud rates
-AllowedBaudRates = [110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
+gAllowedBaudRates = [110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 
 ######################### Helper/Handler Functions for Serial communication and logging
 
@@ -143,7 +174,8 @@ def StripStartOfString (buf) :
 def RecvFullResponse (SerialPort) :
     global gRespTimedOut
     Resp = ""
-    numRetries = gFullRespTout
+    retryDelay = 0.01
+    numRetries = gFullRespTout * (1 / retryDelay)
     gRespTimedOut = False
     while 1 :
         RxChunk = RecvSerialData (SerialPort)
@@ -154,7 +186,7 @@ def RecvFullResponse (SerialPort) :
                 gRespTimedOut = True
                 break
             # Wait..! There's still time for response!
-            time.sleep (1)
+            time.sleep (retryDelay)
             continue
         numRetries = gFullRespTout
         Resp += RxChunk
@@ -179,7 +211,7 @@ def HandleCmdAndGetResp (SerialPort, Cmd, CmdSrc) :
     SendSerialData (SerialPort, Cmd)
     Resp = RecvFullResponse (SerialPort)
     if gRespTimedOut == True :
-        errStr = "***SERROR: Cmd \"" + _cmd + "\" Timed-out with no/incomplete response\n"
+        errStr = "***SERCOM: Cmd \"" + _cmd + "\" Timed-out with no/incomplete response\n"
         print (errStr)
         logmsg (errStr)
     elif len (Resp) != 0 :
@@ -198,8 +230,8 @@ def HandleCmdAndGetResp (SerialPort, Cmd, CmdSrc) :
 # Return : None
 def HandleManualCmds () :
     global gManualCmdEnabled
-    global gAutoCmdEnabled
-    global gAutoCmdFile
+    global gScomEnabled
+    global gScomFile
 
     while 1 :
         Cmd = ReadConsoleInput ("")
@@ -209,16 +241,15 @@ def HandleManualCmds () :
             HandleCmdAndGetResp (gSerPort, Cmd, CmdFromStdIn)
         elif Cmd[0:5] == "break" :
             break
-        elif Cmd[0:5] == "sleep" :
-            break
-        elif Cmd[0:13] == "EnableAutoCmd" :
+            print ("-----------------")
+        elif Cmd[0:6] == "enscom" :
             arg = Cmd.split(" ")[1:][0]
             if len (arg) == 0 or os.path.isfile (arg) == False or arg[-5:] != ".scom" :
-                print ("\nERROR: AutoCmd file not found or invalid - " + arg + "\n")
-                print ("Continuing in Manual Cmd mode")
+                print ("\n***SERCOM: Scom file not found or invalid - " + arg + "\n")
+                print ("Continuing in Manual Cmd mode..")
                 continue
-            gAutoCmdEnabled = True
-            gAutoCmdFile = arg
+            gScomEnabled = True
+            gScomFile = arg
             break
     # Disable ManualCmd mode, it may be set again when required
     gManualCmdEnabled = False
@@ -234,9 +265,9 @@ def ACL_FindInString (*args) :
     else :
         return "0"
 
-# Function to call HandleCmdAndGetResp function from a AutoCmd loop
+# Function to call HandleCmdAndGetResp function from a Scom loop
 # args = (SerialPort, Cmd)
-def ACL_HandleAutoCmd (*args) :
+def ACL_HandleSerCmd (*args) :
     SerialPort = args[0]
     Cmd = args[1]
     return HandleCmdAndGetResp (SerialPort, Cmd, CmdFromScript)
@@ -246,13 +277,13 @@ def ACL_HandleAutoCmd (*args) :
 def ACL_DummyFunction (*args) :
     return "dummy"
 
-# Function to run a scom-configured loop for looped Auto commands from an scom file
-# Usage  : DoAutoLoopAutoCmds (Cmd, AutoCmdFH)
+# Function to run a scom-configured loop for looped commands from an scom file
+# Usage  : DoAutoLoopScomCmds (Cmd, ScomFH)
 #          Cmd        - line read from AutCmd file starting with loopbegin
-#          AutoCmdFH  - File handle to read commands and execute in the loop
+#          ScomFH     - File handle to read commands and execute in the loop
 # Return : None
-def DoAutoLoopAutoCmds (Cmd, AutoCmdFH) :
-    # Serial response to a AutoCmd
+def DoAutoLoopScomCmds (Cmd, ScomFH) :
+    # Serial response to a ScomCmd
     Resp = ""
     # Iteration count of the loop
     ACLKeepLoopAlive = -1 # If no iteration count is specified, loop indefinitely
@@ -265,22 +296,23 @@ def DoAutoLoopAutoCmds (Cmd, AutoCmdFH) :
         # This is not a loopbegin!
         return
 
-    # Line read from AutoCmd .scom file is stored in Cmd
+    # Remove all extra spaces from 'loopbegin' command
+    Cmd = str (re.sub(' +', ' ', Cmd))
+    # Line read from ScomCmd .scom file is stored in Cmd
     Cmd = Cmd.split (' ', 1)[1]
     # Parse and get the number of iterations
     if Cmd[0:4] == "iter" :
         ACLKeepLoopAlive = int (re.findall ('\d+', Cmd)[0])
 
     # Read lines continuously, parse and get either - 
-    # 1. AT command
+    # 1. Target command
     # 2. other scom commands
     # and update the ACLFlist accordingly till we get - 
     #     . EOF (means a bad scom file) : LOOP won't run
     #     . loopend (end of the loop) : LOOP will run
     #     . bad syntax scom line before EOF/loopend (bad scom file) : LOOP won't run
-    while 1 :
-        Cmd = AutoCmdFH.readline ()
-        # Remove newline character in Cmd read by readline()
+    for Cmd in ScomFH :
+        # Remove newline character in Cmd read (line)
         Cmd = Cmd[:-1]
         if not Cmd : 
             # EOF reached! That ain't right
@@ -291,8 +323,10 @@ def DoAutoLoopAutoCmds (Cmd, AutoCmdFH) :
             args = []
             args.append (gSerPort)
             args.append (Cmd)
-            ACLFlist.append (partial (ACL_HandleAutoCmd, *args))
+            ACLFlist.append (partial (ACL_HandleSerCmd, *args))
         elif Cmd[0:5] == "sleep" :
+            # Remove all extra spaces
+            Cmd = str (re.sub(' +', ' ', Cmd))
             Cmd = Cmd[6:]
             # A delay to be added in loop
             args = []
@@ -319,48 +353,70 @@ def DoAutoLoopAutoCmds (Cmd, AutoCmdFH) :
             i += 1
         ACLKeepLoopAlive -= 1
 
-# Function to run a loop to read and handle Cmds from AutoCmd scom file sequenitally
-# Usage  : HandleAutoCmds ()
-# Return : None
-def HandleAutoCmds () :
-    global gAutoCmdEnabled
-    global gAutoCmdFile
-    global gManualCmdEnabled
-    NewAutoCmdFileAvl = False
+# Function to try switch to previous (mother) scom in case of chained scom tests
+# Usage  : SwitchToMotherScom (ScomFH)
+#          ScomFH     - File handle to current (child) scom file
+#          reason     - reason of the switch
+# Return : ScomFH     - Handle to scom file if mother scom is found
+#                       'None' if mother not found
+def SwitchToMotherScom (ScomFH, reason) :
+    global gScomEnabled
+    global gOldScoms
+    print ("\n***SERCOM: " + reason)
+    ScomFH.close ()
+    # If an Scom Chain is setup and if we're in child Scom, go back to mother
+    if gOldScoms == [] :
+        print ("\n***SERCOM: No scom chain.. Exiting scom mode.")
+        gScomEnabled = False
+        return
+    ScomFH = gOldScoms.pop ()
+    print ("\n***SERCOM: Continuing mother scom: " + ScomFH.name)
+    return ScomFH
 
-    AutoCmdFH = open (gAutoCmdFile, 'r')
+# Function to run a loop to read and handle Cmds from scom file sequenitally
+# Usage  : HandleScomCmds ()
+# Return : None
+def HandleScomCmds () :
+    global gScomEnabled
+    global gScomFile
+    global gOldScoms
+    global gManualCmdEnabled
+    NewScomFileAvl = False
+
+    ScomFH = open (gScomFile, 'r')
     while 1 :
-        Cmd = AutoCmdFH.readline ()
-        # Check for EOF
+        Cmd = ScomFH.readline ()
         if not Cmd :
-            AutoCmdFH.close ()
-            break
+            ScomFH = SwitchToMotherScom (ScomFH, "EOF on " + gScomFile)
+            if ScomFH == None :
+                return
         if len (Cmd) == 0 or Cmd[0] == '#' or Cmd[0] == '\n':
             continue
-        # Remove newline character in Cmd read by readline()
+        # Remove newline character in Cmd read
         Cmd = Cmd[:-1]
         if Cmd[0:2].lower () == "at" :
             Resp = HandleCmdAndGetResp (gSerPort, Cmd, CmdFromScript)
+        elif Cmd[0:6] == "expect" :
+            sys.exit ("Need to update!")
+        elif Cmd[0:9] == "loopbegin" :
+            DoAutoLoopScomCmds (Cmd, ScomFH)
         elif Cmd[0:5] == "break" :
-            print ("AutoCmd encountered 'break'.. Closing file " + gAutoCmdFile)
-            AutoCmdFH.close ()
-            break
-        elif Cmd[0:15] == "EnableManualCmd" :
+            ScomFH = SwitchToMotherScom (ScomFH, "'break' on " + gScomFile)
+            if ScomFH == None :
+                return
+        elif Cmd[0:5] == "enman" :
             gManualCmdEnabled = True
             break
-        elif Cmd[0:13] == "EnableAutoCmd" :
+        elif Cmd[0:6] == "enscom" :
+            # Remove all extra spaces
+            Cmd = str (re.sub(' +', ' ', Cmd))
             arg = Cmd.split(" ")[1:][0]
             if len (arg) == 0 or os.path.isfile (arg) == False or arg[-5:] != ".scom" :
-                print ("\nERROR: AutoCmd file not found or invalid - " + arg + "\n")
-                print ("Continuing normally..")
+                print ("\n***SERCOM: Scom file not found or invalid - " + arg + ". Continuing normally")
                 continue
-            gAutoCmdFile = arg
-            NewAutoCmdFileAvl = True
-            break
-        elif Cmd[0:9] == "loopbegin" :
-            DoAutoLoopAutoCmds (Cmd, AutoCmdFH)
-    # Update AutoCmd-mode-enable flag as per latest AutoCmd file
-    gAutoCmdEnabled= NewAutoCmdFileAvl
+            gOldScoms.append (ScomFH)
+            print ("\n***SERCOM: Switch to child scom: " + arg)
+            ScomFH = open (arg, "r")
 
 # Function to close all open files, typically done on irrecoverable-error-with-exit
 # Usage  : CloseOpenFiles ()
@@ -376,53 +432,133 @@ def CloseOpenFiles () :
 
 ######################### Start-Of-Python-Script (SOPS)
 
+if len (sys.argv) == 1 : sys.exit (SercomUsageStr)
+
 # Validate arguments 
 argv = sys.argv[1:]
-opts, args = getopt.getopt(argv, 'd:a:b:lm')
+opts, args = getopt.getopt(argv, 'd:a:b:c:lm')
 for opt, arg in opts :
     if opt == "-d" :
         if len (arg) == 0 :
-            sys.exit ("\nERROR: Need valid Device ID\n" + sercomUsageStr)
+            sys.exit ("\nERROR: Need valid Device ID\n" + SercomUsageStr)
         gSerPortID = arg
     elif opt == "-a" :
         if len (arg) == 0 or os.path.isfile (arg) == False or arg[-5:] != ".scom" :
-            sys.exit ("\nERROR: AutoCmd file not found or invalid - " + arg + "\n" + sercomUsageStr)
-        gAutoCmdEnabled = True
-        gAutoCmdFile = arg
+            sys.exit ("\nERROR: Scom file not found or invalid - " + arg + "\n" + SercomUsageStr)
+        gScomEnabled = True
+        gScomFile = arg
     elif opt == "-m" :
-        gManualCmdEnabled = 3
+        gManualCmdEnabled = True
     elif opt == "-b" :
-        if int (arg) not in AllowedBaudRates :
-            sys.exit ("\nERROR: Invalid BaudRate - " + arg + "\n" + sercomUsageStr)
-        gBaudRate = int (arg)
+        if int (arg) not in gAllowedBaudRates :
+            sys.exit ("\nERROR: Invalid BaudRate - " + arg + "\n" + SercomUsageStr)
+        gSerBaud = int (arg)
+    elif opt == "-c" :
+        if len (arg) == 0 or os.path.isfile (arg) == False or arg[-5:] != ".conf" :
+            sys.exit ("\nERROR: PortConfig file not found or invalid - " + arg + "\n" + SercomUsageStr)
+            gSerPortCfgFile = arg
     elif opt == "-l" :
         gLoggingEnabled = True
     else :
         sys.exit ("Unknown option: {opt}")
 
 if gSerPortID == "undefined" :
-    sys.exit ("\nERROR: Need valid Device ID\n" + sercomUsageStr)
+    sys.exit ("\nERROR: Need valid Device ID\n" + SercomUsageStr)
 
-# Disable Manual command entry if: 
-# 1. '-m' is not specified in arguments
-# 2. '-a' is given and valid Auto-commands file is available
-if gAutoCmdEnabled and gManualCmdEnabled != 3 :
-    gManualCmdEnabled = False
-else :
+# Set default status of Manual mode; refer -m option in SercomUsageStr
+if gScomEnabled == False or gManualCmdEnabled == "enabled" :
     gManualCmdEnabled = True
 
 print ("Serial Port Device   : " + gSerPortID)
-print ("Baud Rate            : " + str (gBaudRate))
+print ("Baud Rate            : " + str (gSerBaud))
 print ("Session Logging      : " + str (gLoggingEnabled))
-print ("Auto Command tests   : " + str (gAutoCmdEnabled))
+print ("Scom tests           : " + str (gScomEnabled))
 print ("Manual Command entry : " + str (gManualCmdEnabled))
 print ("\n-----------------")
 
-# Configure and open Serial Port
-if gPyVer.startswith("3.") :
-    gSerPort = serial.Serial (port=gSerPortID, baudrate=gBaudRate, inter_byte_timeout=0.01, timeout=0.001)
+# Check/Validate Serial Port configuration from gSerPortCfgFile
+if gSerPortCfgFile != "undefined" :
+    PortCfgFH = open (gSerPortCfgFile, 'r')
+    BadSerParams = "none"
+    _bytesz = gSerByteSize
+    _parity = gSerParity
+    _stpbit = gSerStopBits
+    _rdtout = gSerRdTimeout
+    _flowct = gSerFlowCtrl
+    _wrtout = gSerWrTimeout
+    while 1 :
+        Cfg = PortCfgFH.readline ()
+        if not Cfg :
+            print ("***SERCOM: " + gSerPortCfgFile + " EOF")
+        if len (Cfg) == 0 : continue
+        # Remove newline character in Cmd read
+        Cfg = Cfg[:-1]
+        # Remove all spaces in line
+        Cfg = Cfg.replace (" ", "")
+        if Cfg[0:6] == "bytesz" :
+            if Cfg[6] != "=" or (int (Cfg[7:]) not in range (5, 8, 1)) :
+                BadSerParams = "bytesz"; break
+            _bytesz = int (Cfg[8])
+        elif Cfg[0:6] == "parity" :
+            parr = ["N", "E", "O", "M", "S"]
+            if Cfg[6] != "=" or (not any (i in Cfg[7:] for i in parr)) :
+                BadSerParams = "parity"; break
+            _parity = Cfg[7]
+        elif Cfg[0:6] == "stpbit" :
+            sarr = ["1", "1.5", "2"]
+            if Cfg[6] != "=" or (not any (i in Cfg[7:] for i in sarr)) :
+                BadSerParams = "stpbit"; break
+            if Cfg[7:] == "1" or Cfg[7:] == "2" : _stpbit = int (Cfg[7:])
+            else : _stpbit = float (Cfg[7:])
+        elif Cfg[0:6] == "rdtout" :
+            if Cfg[6] != "=" :
+                BadSerParams = "rdtout"; break
+            try :
+                f = float (Cfg[7:])
+            except ValueError :
+                BadSerParams = "rdtout"; break
+            _rdtout = f
+        elif Cfg[0:6] == "flowct" :
+            farr = ["N", "X", "R", "D"]
+            if Cfg[6] != "=" or (not any (i in Cfg[7:] for i in farr)) :
+                BadSerParams = "flowct"; break
+            _flowct = Cfg[7]
+        elif Cfg[0:6] == "wrtout" :
+            if Cfg[6] != "=" :
+                BadSerParams = "wrtout"; break
+            try :
+                f = float (Cfg[7:])
+            except ValueError :
+                BadSerParams = "wrtout"; break
+            _wrtout = f
+    if BadSerParams == "none" :
+        # gSerPortCfgFile has valid parameters, update serial parameters
+        gSerByteSize = _bytesz
+        gSerParity = _parity
+        gSerStopBits = _stpbit
+        gSerRdTimeout = _rdtout
+        gSerFlowCtrl = _flowct
+        gSerWrTimeout = _wrtout
+        print ("Updated Serial Port Configuration as follows:\n----------\n")
+    else :
+        print ("\n***SERCOM: Bad parameter (" + BadSerParams + ") found in " + gSerPortCfgFile)
+        print ("Using Default Serial Port Configuration as follows:\n----------\n")
 else :
-    gSerPort = serial.Serial (port=gSerPortID, baudrate=gBaudRate, interCharTimeout=0.01, timeout=0.001)
+    print ("Using Default Serial Port Configuration as follows:\n----------\n")
+
+print ("Byte Size     : " + str (gSerByteSize))
+print ("Parity        : " + gSerParity)
+print ("Stop Bits     : " + str (gSerStopBits))
+print ("Read Timeout  : " + str (gSerRdTimeout))
+print ("FlowCtrl      : " + str (gSerFlowCtrl))
+print ("Write Timeout : " + str (gSerWrTimeout))
+
+# Configure and open Serial Port
+gSerPort = serial.Serial (port=gSerPortID, baudrate=gSerBaud, \
+        bytesize=gSerByteSize, parity=gSerParity, stopbits=gSerStopBits, \
+        timeout=gSerRdTimeout, write_timeout=gSerWrTimeout, \
+        xonxoff=gSerParity=='X', rtscts=gSerParity=='R', \
+        dsrdtr=gSerParity=='D')
 
 # If logging is enabled, create a logger
 if gLoggingEnabled :
@@ -435,22 +571,20 @@ if gLoggingEnabled :
 Resp = HandleCmdAndGetResp (gSerPort, "AT", CmdFromScript)
 if "OK" not in Resp :
     CloseOpenFiles ()
-    sys.exit ("***SERROR: Basic AT-OK session failed .. Aborting!")
+    sys.exit ("***SERCOM: Basic AT-OK session failed .. Aborting!")
 
 # We may have advanced test sequences requiring repeated
-# Manual and Auto Command sequences independently
+# Manual and Scom Command sequences independently
 while 1 :
-    #print ("Main** Manual: " + str (gManualCmdEnabled) + " Auto: " + str (gAutoCmdEnabled))
+    #print ("Main** Manual: " + str (gManualCmdEnabled) + " Scom: " + str (gScomEnabled))
     if gManualCmdEnabled :
         HandleManualCmds ()
-    elif gAutoCmdEnabled :
-        HandleAutoCmds ()
+    elif gScomEnabled :
+        HandleScomCmds ()
     else :
         break
 
 CloseOpenFiles ()
 
-print ("\nThat's all folks..!\n")
-
-quit ()
+sys.exit ("\nThat's all folks..!\n")
 

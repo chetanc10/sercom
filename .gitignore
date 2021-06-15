@@ -1,3 +1,9 @@
 
 *.patch
 com.log
+*.swp
+*.swo
+*.scom
+*.conf
+!example.scom
+!child.scom
