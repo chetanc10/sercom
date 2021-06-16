@@ -252,17 +252,15 @@ def HandleManualCmds () :
     # lScomStack is for scom enabled in manual mode
     lScomStack = []
 
-    print ("\n---Give 'break' to get out of Manual command mode---\n")
     while 1 :
         Cmd = ReadConsoleInput ("")
         if len (Cmd) == 0 : continue
-        elif Cmd[0:5] == "break" :
-            # TODO use SCOM_break and SCOM_enscom for standard cmd parsing
+        elif Cmd[0:10] == "SCOM_break" :
             gManualEn = False
             print ("-----------------")
             break
-        elif Cmd[0:6] == "enscom" :
-            arg = SkipToNextWord (Cmd, 6)
+        elif Cmd[0:11] == "SCOM_enscom" :
+            arg = SkipToNextWord (Cmd, 11)
             if not os.path.isfile (arg) or arg[-5:] != ".scom" :
                 slogprint ("Scom file not found or invalid - " \
                         + arg + "\nContinuing in Manual Cmd mode..")

@@ -80,7 +80,6 @@ When script sees this, it notes that the end of a loop started previously.
 Usage: SCOM_sleep \<n\>[.m]<br>
 When script sees this, it sleeps for n seconds and optionally for m milliseconds, if specified.
 
-
 #### SCOM_expect
 Usage: SCOM_expect \<action\> \<substring\><br>
 TODO<br>
@@ -90,3 +89,6 @@ When script encounters above cmd at start of a new line, it tries to match the r
 2. SCOM_BreakOnNoMatch - Used for loops, break the loop when match not found. If not in loop, this is don't care.
 3. SCOM_RmLineOnMatch - Used anywhere in scom, this removes line that contains a pattern (this can help continuous async serial data recv'd to be discarded as and when required).
 
+NOTE: Manual mode supports few of scom commands and they're listed below.
+1. SCOM_break
+2. SCOM_enscom
