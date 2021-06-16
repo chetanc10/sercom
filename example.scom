@@ -32,6 +32,8 @@ SCOM_loopend
 SCOM_enscom 1.scom
 SCOM_enscom child.scom
 
+at&v
+
 # Break the Scom session and any command after SCOM_break will not be executed!
 SCOM_break
 

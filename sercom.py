@@ -70,12 +70,8 @@ gPyVer = platform.python_version()
 ### Environment setup/control
 # refer -d option in SercomUsageStr
 gSerPortID = "undefined"
-# refer -a option in SercomUsageStr
-gScomEn = False
-# Current Scom filename being executed
-gScomFile = "undefined"
 # Scom filename stack for old Scom files (used to handle Scom Chains)
-gOldScoms = []
+gScomStack = []
 # refer -m option in SercomUsageStr
 gManualEn = "on"
 # refer -c option in SercomUsageStr
@@ -253,8 +249,8 @@ def HandleCmdAndGetResp (SerialPort, Cmd, CmdSrc, SentryList) :
 # Return : None
 def HandleManualCmds () :
     global gManualEn
-    global gScomEn
-    global gScomFile
+    # lScomStack is for scom enabled in manual mode
+    lScomStack = []
 
     print ("\n---Give 'break' to get out of Manual command mode---\n")
     while 1 :
@@ -271,12 +267,10 @@ def HandleManualCmds () :
                 slogprint ("Scom file not found or invalid - " \
                         + arg + "\nContinuing in Manual Cmd mode..")
                 continue
-            # TODO Handle -m -s, enscom 1.scom, break manual exiting script!
-            gScomFile = arg
-            oldScomEn = gScomEn
-            HandleScomCmds ()
-            gScomEn = oldScomEn
-            break
+            # Open scom file and stack it ready 
+            ScomFH = open (arg, "r");
+            lScomStack.append (ScomFH)
+            HandleScomCmds (lScomStack)
         else :
             # Not Manual-mode control command, send to modem and get response
             Resp = HandleCmdAndGetResp (gSerPort, Cmd, MCmd, gSerSentry)
@@ -365,38 +359,33 @@ def DoAutoLoopScomCmds (Cmd, ScomFH) :
         ACLKeepLoopAlive -= 1
 
 # Function to try switch to previous (mother) scom in chained scom test cases
-# Usage  : SwitchToMotherScom (ScomFH, reason)
+# Usage  : SwitchToMotherScom (ScomFH, ScomStack, reason)
 #          ScomFH     - File handle to current (child) scom file
+#          ScomStack  - Stack of Scom file handles used in this scom session
 #          reason     - reason of the switch
 # Return : ScomFH     - Handle to scom file if mother scom is found
 #                       'None' if mother not found
-def SwitchToMotherScom (ScomFH, reason) :
-    global gScomEn
-    global gOldScoms
+def SwitchToMotherScom (ScomFH, ScomStack, reason) :
     slogprint (reason + " on " + os.path.basename(ScomFH.name))
     ScomFH.close ()
     # If an Scom Chain is setup and if we're in child Scom, go back to mother
-    if gOldScoms == [] :
-        slogprint ("Exiting scom mode")
-        gScomEn = False
-        return
-    ScomFH = gOldScoms.pop ()
+    if ScomStack == [] : slogprint ("Exiting scom mode"); return
+    ScomFH = ScomStack.pop ()
     slogprint ("Continuing mother scom: " + ScomFH.name)
     return ScomFH
 
 # Function to run a loop to read and handle Cmds from scom file sequenitally
-# Usage  : HandleScomCmds ()
+# Usage  : HandleScomCmds (ScomStack)
+#          ScomStack  - Stack of Scom file handles used in this scom session
 # Return : None
-def HandleScomCmds () :
-    global gScomFile
-    global gOldScoms
+def HandleScomCmds (ScomStack) :
 
-    ScomFH = open (gScomFile, 'r')
+    ScomFH = ScomStack.pop ()
     while 1 :
         Cmd = ScomFH.readline ()
         if not Cmd :
-            ScomFH = SwitchToMotherScom (ScomFH, "EOF")
-            if ScomFH == None : return
+            ScomFH = SwitchToMotherScom (ScomFH, ScomStack, "EOF")
+            if ScomFH == None: return
             continue
         if Cmd[0] == '#' or Cmd[0] == '\n': continue
         # Remove newline character in Cmd read
@@ -406,7 +395,7 @@ def HandleScomCmds () :
             SysExit ("Need to update!")
         elif Cmd[0:14] == "SCOM_loopbegin" : DoAutoLoopScomCmds (Cmd, ScomFH)
         elif Cmd[0:10] == "SCOM_break" :
-            ScomFH = SwitchToMotherScom (ScomFH, "SCOM_break")
+            ScomFH = SwitchToMotherScom (ScomFH, ScomStack, "SCOM_break")
             if ScomFH == None : return
         elif Cmd[0:10] == "SCOM_enman" :
             slogprint ("Switching to Manual mode")
@@ -419,7 +408,7 @@ def HandleScomCmds () :
                 slogprint ("Scom file not found or invalid - " \
                         + arg + ". Continuing normally")
                 continue
-            gOldScoms.append (ScomFH)
+            ScomStack.append (ScomFH)
             slogprint ("Switching to child scom: " + arg)
             ScomFH = open (arg, "r")
         else :
@@ -461,8 +450,9 @@ for opt, arg in opts :
         if not os.path.isfile (arg) or arg[-5:] != ".scom" :
             SysExit ("Scom file not found or invalid - " \
                     + arg + "\n" + SercomUsageStr)
-        gScomEn = True
-        gScomFile = arg
+        # Open scom file and stack it ready 
+        ScomFH = open (arg, "r");
+        gScomStack.append (ScomFH)
     elif opt == "-m" : gManualEn = True
     elif opt == "-c" :
         if not os.path.isfile (arg) or arg[-5:] != ".conf" :
@@ -577,11 +567,11 @@ except serial.serialutil.SerialException :
     SysExit ("Unable to open Serial port: " + gSerPortID)
 
 # Set default status of Manual mode; refer -m option in SercomUsageStr
-if gScomEn == False : gManualEn = True
+if gScomStack == [] : gManualEn = True
 
 slogprint ("-----------------" + \
         "\nSession Logging      : " + str (gLoggingEnabled) + \
-        "\nScom tests           : " + str (gScomEn) + \
+        "\nScom tests           : " + str (gScomStack == []) + \
         "\nManual Command entry : " + str (gManualEn) + \
         "\nSerial Port Device   : " + gSerPortID + \
         "\nSerial Baud Rate     : " + str (gSerBaud) + \
@@ -602,10 +592,10 @@ if gSerScvRsp not in Resp :
 
 # We may have advanced test sequences requiring repeated
 # Manual and Scom Command sequences independently
-while gManualEn == True or gScomEn == True :
-    #print ("[MAIN] Manual:{}, Scom:{}".format (gManualEn, gScomEn))
+while gManualEn == True or gScomStack != [] :
+    #print ("[MAIN] Manual:{}, Scom:{}".format (gManualEn, gScomStack == []))
     if gManualEn == True : HandleManualCmds ()
-    if gScomEn == True : HandleScomCmds ()
+    if gScomStack != [] : HandleScomCmds (gScomStack)
 
 CloseOpenFiles ()
 
