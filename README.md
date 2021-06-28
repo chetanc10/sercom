@@ -51,44 +51,44 @@ sercom accepts an optional file containing various sercom-control with syntax an
 
 ### Syntax of SCOM file
 Any line in scom file falls under one of the following categories:
-1. scom command - command to control sercom execution (marked as SCOM\_).
+1. scom command - command to control sercom execution (marked as scom\_).
 2. comment - Any line starting with '#' is treated as don't care.
-3. modem command - if any line is uncommented and is not starting with SCOM\_, then it is treated as modem command and sent out to modem. So scom writer MUST ENSURE that only modem commands are uncommented and any other alhpanumeric sequence like explanation, description, unwanted-modem-command, etc are commented.
+3. modem command - if any line is uncommented and is not starting with scom\_, then it is treated as modem command and sent out to modem. So scom writer MUST ENSURE that only modem commands are uncommented and any other alhpanumeric sequence like explanation, description, unwanted-modem-command, etc are commented.
 
-### SCOM Commands
+### scom Commands
 
 Following sections detail each scom command. example.scom can be referred as well.
 
-#### SCOM_enman
+#### scom_enman
 When script sees this, Manual Command mode is entered and once ManualCmd mode breaks, the script comes back to processing the next line in current scom file being parsed.
 
-#### SCOM_enscom
-Usage: SCOM_enscom <path-including-scom-file.scom><br>
+#### scom_enscom
+Usage: scom_enscom <path-including-scom-file.scom><br>
 If script sees this and if the file-path is valid, sercom will switch to new scom file and run cmds from that scom. If the new scom reaches EOF or 'breaks', sercom will switch back to previously opened scom and continue with that. So a chaining is possible which is explained in a later section.
 
-#### SCOM_break
+#### scom_break
 When script sees this, it stops current Scom mode - any further commands in file will not be read/executed. It's like a repositionable EOF and can be used during development of advanced Scom test sequences in scom files.
 
-#### SCOM_loopbegin
-Usage: SCOM_loopbegin [iter=number-of-iterations]<br>
+#### scom_loopbegin
+Usage: scom_loopbegin [iter=number-of-iterations]<br>
 When script sees this, it understands a loop is needed and optionally notes down the number of iterations and breaks the loop after that number of iterations, if iteration count is specified.
 
-#### SCOM_loopend
+#### scom_loopend
 When script sees this, it notes that the end of a loop started previously.
 
-#### SCOM_sleep
-Usage: SCOM_sleep \<n\>[.m]<br>
+#### scom_sleep
+Usage: scom_sleep \<n\>[.m]<br>
 When script sees this, it sleeps for n seconds and optionally for m milliseconds, if specified.
 
-#### SCOM_expect
-Usage: SCOM_expect \<action\> \<substring\><br>
+#### scom_expect
+Usage: scom_expect \<action\> \<substring\><br>
 TODO<br>
-When script encounters above cmd at start of a new line, it tries to match the response buffer of immediately previous modem command. scom supports just one 'SCOM_expect' per modem command
+When script encounters above cmd at start of a new line, it tries to match the response buffer of immediately previous modem command. scom supports just one 'scom_expect' per modem command
 <action> can be any of the following - 
-1. SCOM_BrkOnMatch - Used for loops, break the loop when match found. If not in loop, this is don't care.
-2. SCOM_BreakOnNoMatch - Used for loops, break the loop when match not found. If not in loop, this is don't care.
-3. SCOM_RmLineOnMatch - Used anywhere in scom, this removes line that contains a pattern (this can help continuous async serial data recv'd to be discarded as and when required).
+1. scom_BrkOnMatch - Used for loops, break the loop when match found. If not in loop, this is don't care.
+2. scom_BreakOnNoMatch - Used for loops, break the loop when match not found. If not in loop, this is don't care.
+3. scom_RmLineOnMatch - Used anywhere in scom, this removes line that contains a pattern (this can help continuous async serial data recv'd to be discarded as and when required).
 
 NOTE: Manual mode supports few of scom commands and they're listed below.
-1. SCOM_break
-2. SCOM_enscom
+1. scom_break
+2. scom_enscom

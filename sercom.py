@@ -9,6 +9,7 @@ Mandatory args:\n\
                       Mandatory parameters - \n\
                           scvcmd=[Modem-cmd before starting Serial IO]\n\
                           scvrsp=[Modem-resp to scvcm to confirm serial IO]\n\
+                          sentry=[string indicates end of modem rsp buffer]\n\
                       Optional parameters - \n\
                           baudrt=[Known baud rate value]\n\
                           bytesz=[5|6|7|8]\n\
@@ -22,7 +23,7 @@ optionals: If an optional is not given, respective Default is applied\n\
                       SCOM - Serial Communication via text-syntactical file\n\
                       Default - No Scom commands are applicable\n\
                       NOTE: .scom file has a syntax - refer example.scom\n\
-                            It can enable Manual commands with 'SCOM_enman'.\n\
+                            It can enable Manual commands with 'scom_enman'.\n\
      -m             : Enable Manual entry of commands from stdin console\n\
                       Default - Disabled if -s Scom is used\n\
                               - Enabled if -s Scom is not used\n\
@@ -36,7 +37,7 @@ optionals: If an optional is not given, respective Default is applied\n\
                       <Date> <Time> [{A}uto|{M}anual {I}|{O}] 'Data' \n\
                       e.g. May 27 14:24:50 [AO] 'AT\\r' \n\
 NOTE:\n\
-1. To (re-)enable Manual mode from Scom, cmd at ScomFile EOF: SCOM_enman\n\
+1. To (re-)enable Manual mode from Scom, cmd at ScomFile EOF: scom_enman\n\
 2. If both scom & manual modes requested, manual runs first and then scom\n\
 3. Any script specific messages are tagged as '***SERCOM'\n\
 "
@@ -221,6 +222,7 @@ def RecvFullResponse (SerialPort, RespTout, SentryList) :
 #          SentryList - List of sentry strings which mark Full response Rx
 # Return : String buffer containing Serial data received
 def HandleCmdAndGetResp (SerialPort, Cmd, CmdSrc, SentryList) :
+    # TODO make generic for linux CLI and AT modem interfaces - handle CRLFs
     _cmd = Cmd
     Cmd = Cmd + "\r"
     if CmdSrc == SCmd : print (Cmd)
@@ -236,9 +238,7 @@ def HandleCmdAndGetResp (SerialPort, Cmd, CmdSrc, SentryList) :
     elif len (Resp) != 0 :
         Resp = StripStartOfString (Resp)
         logmsg ( "[" + CmdSrcID + "I] " + repr (Resp))
-        print (Resp)
-    # This print statement is to separate console prints per command
-    print ("-----------------")
+        sys.stdout.write (Resp)
     sys.stdout.flush ()
     return Resp
 
@@ -255,11 +255,8 @@ def HandleManualCmds () :
     while 1 :
         Cmd = ReadConsoleInput ("")
         if len (Cmd) == 0 : continue
-        elif Cmd[0:10] == "SCOM_break" :
-            gManualEn = False
-            print ("-----------------")
-            break
-        elif Cmd[0:11] == "SCOM_enscom" :
+        elif Cmd[0:10] == "scom_break" : gManualEn = False; break
+        elif Cmd[0:11] == "scom_enscom" :
             arg = SkipToNextWord (Cmd, 11)
             if not os.path.isfile (arg) or arg[-5:] != ".scom" :
                 slogprint ("Scom file not found or invalid - " \
@@ -296,7 +293,7 @@ def ACL_DummyFunction (*args) :
 
 # Function to run a scom-configured loop for looped commands from an scom file
 # Usage  : DoAutoLoopScomCmds (Cmd, ScomFH)
-#          Cmd        - line read from AutCmd file starting with SCOM_loopbegin
+#          Cmd        - line read from AutCmd file starting with scom_loopbegin
 #          ScomFH     - File handle to read commands and execute in the loop
 # Return : None
 def DoAutoLoopScomCmds (Cmd, ScomFH) :
@@ -309,9 +306,9 @@ def DoAutoLoopScomCmds (Cmd, ScomFH) :
     # Local return value holder
     RetVal = 0
 
-    # Remove all extra spaces from 'SCOM_loopbegin' command
+    # Remove all extra spaces from 'scom_loopbegin' command
     Cmd = str (re.sub(' +', ' ', Cmd))
-    # Skip SCOM_loopbegin and point Cmd to 'iter' in line
+    # Skip scom_loopbegin and point Cmd to 'iter' in line
     Cmd = Cmd.split (' ', 1)[1]
     # Parse and get the number of iterations
     if Cmd[0:4] == "iter" : ACLKeepLoopAlive = int (re.findall ('\d+', Cmd)[0])
@@ -321,16 +318,16 @@ def DoAutoLoopScomCmds (Cmd, ScomFH) :
     # 2. other scom commands
     # and update the ACLFlist accordingly till we get - 
     #     . EOF (means a bad scom file) : LOOP won't run
-    #     . SCOM_loopend (end of the loop) : LOOP will run
-    #     . bad syntax line before EOF/SCOM_loopend (bad scom file)
+    #     . scom_loopend (end of the loop) : LOOP will run
+    #     . bad syntax line before EOF/scom_loopend (bad scom file)
     while 1 :
         Cmd = ScomFH.readline ()
         if not Cmd : RetVal = -1; break; # EOF reached! That ain't right
         if Cmd[0] == '#' or Cmd[0] == '\n': continue
         # Remove newline character in Cmd read (line)
         Cmd = Cmd[:-1]
-        # Check for SCOM/Modem cmds and act accordingly
-        if Cmd[0:10] == "SCOM_sleep" :
+        # Check for scom/Modem cmds and act accordingly
+        if Cmd[0:10] == "scom_sleep" :
             # Remove all extra spaces
             Cmd = str (re.sub(' +', ' ', Cmd))
             Cmd = Cmd[11:]
@@ -338,7 +335,7 @@ def DoAutoLoopScomCmds (Cmd, ScomFH) :
             args = []
             args.append (float (Cmd))
             ACLFlist.append (partial (time.sleep, *args))
-        elif Cmd[0:12] == "SCOM_loopend" : break # End indication of the loop
+        elif Cmd[0:12] == "scom_loopend" : break # End indication of the loop
         else :
             # A command for the modem, let it be handled in loop
             args = []
@@ -388,18 +385,18 @@ def HandleScomCmds (ScomStack) :
         if Cmd[0] == '#' or Cmd[0] == '\n': continue
         # Remove newline character in Cmd read
         Cmd = Cmd[:-1]
-        # Check for SCOM/Modem cmds and act accordingly
-        if Cmd[0:11] == "SCOM_expect" :
+        # Check for scom/Modem cmds and act accordingly
+        if Cmd[0:11] == "scom_expect" :
             SysExit ("Need to update!")
-        elif Cmd[0:14] == "SCOM_loopbegin" : DoAutoLoopScomCmds (Cmd, ScomFH)
-        elif Cmd[0:10] == "SCOM_break" :
-            ScomFH = SwitchToMotherScom (ScomFH, ScomStack, "SCOM_break")
+        elif Cmd[0:14] == "scom_loopbegin" : DoAutoLoopScomCmds (Cmd, ScomFH)
+        elif Cmd[0:10] == "scom_break" :
+            ScomFH = SwitchToMotherScom (ScomFH, ScomStack, "scom_break")
             if ScomFH == None : return
-        elif Cmd[0:10] == "SCOM_enman" :
+        elif Cmd[0:10] == "scom_enman" :
             slogprint ("Switching to Manual mode")
             HandleManualCmds ()
             # At this point, Manual mode ends by 'break', continue normally
-        elif Cmd[0:11] == "SCOM_enscom" :
+        elif Cmd[0:11] == "scom_enscom" :
             # Extract the filename
             arg = SkipToNextWord (Cmd, 11)
             if not os.path.isfile (arg) or arg[-5:] != ".scom" :
@@ -410,7 +407,7 @@ def HandleScomCmds (ScomStack) :
             slogprint ("Switching to child scom: " + arg)
             ScomFH = open (arg, "r")
         else :
-            # Not SCOM command, send to modem and get response
+            # Not scom command, send to modem and get response
             Resp = HandleCmdAndGetResp (gSerPort, Cmd, SCmd, gSerSentry)
 
 # Function to close all open files and serial port handles
@@ -518,8 +515,8 @@ while 1 :
         sarr = ["1", "1.5", "2"]
         if Cfg[6] != "=" or (not any (i in Cfg[7:] for i in sarr)) :
             BadSerParams = "stpbit"; break
-        if Cfg[7:] == "1" or Cfg[7:] == "2" : _stpbit = int (Cfg[7:])
-        else : _stpbit = float (Cfg[7:])
+        if Cfg[7:] == "1.5" : _stpbit = float (Cfg[7:])
+        else : _stpbit = int (Cfg[7:])
     elif Cfg[0:6] == "rdtout" :
         if Cfg[6] != "=" : BadSerParams = "rdtout"; break
         try : f = float (Cfg[7:])

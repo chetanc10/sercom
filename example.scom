@@ -20,50 +20,50 @@ at#portcfg?
 #at#wlanstart=1
 
 # A definitive loop now iterating for 10 times
-SCOM_loopbegin iter=2
+scom_loopbegin iter=2
 at#wlanscan=0
-SCOM_sleep 0.5
-SCOM_loopend
+scom_sleep 0.5
+scom_loopend
 
 # Uncomment the following to enable ManualCmd mode for manually enter commands
-#SCOM_enman
+#scom_enman
 
 # Trying an non-existent scom file to see how script reacts
-SCOM_enscom 1.scom
-SCOM_enscom child.scom
+scom_enscom 1.scom
+scom_enscom child.scom
 
 at&v
 
-# Break the Scom session and any command after SCOM_break will not be executed!
-SCOM_break
+# Break the Scom session and any command after scom_break will not be executed!
+scom_break
 
-########## ALL THE FOLLOWING ARE NOT EXECUTED SINCE WE GAVE 'SCOM_break' above
+########## ALL THE FOLLOWING ARE NOT EXECUTED SINCE WE GAVE 'scom_break' above
 
 at#rndis?
 
 # This is just an example to help understand scom for an automated and large number of tests divided/grouped as per feature/test-case
-SCOM_enscom ~/softap/security/openap.scom
-SCOM_enscom ~/station/security/wpa2.scom
+scom_enscom ~/softap/security/openap.scom
+scom_enscom ~/station/security/wpa2.scom
 
 # We have multiple methods to run multiple scoms in one run as described below.
 #
-# 1. FIFO Model - Simply have a mother scom file calling to multiple children scom files with SCOM_enscom command in required order. In a simple FIFO-model child scom file(s) will not contain SCOM_enscom command.
+# 1. FIFO Model - Simply have a mother scom file calling to multiple children scom files with scom_enscom command in required order. In a simple FIFO-model child scom file(s) will not contain scom_enscom command.
 # e.g. FIFO Model below
 # example.scom is mother scom with following lines
-SCOM_enscom openap.scom
-SCOM_enscom wpa2ap.scom
-SCOM_enscom wpa3ap.scom
-# For above, script sees 'SCOM_enscom openap.scom' and switches to openap.scom and once openap.scom completes, it comes back to open mother scom (example.scom in this case), and positions read-line to next to 'SCOM_enscom openap.scom', i.e. it will now read line 'SCOM_enscom wpa2ap.scom' and so on till scom FIFO is complete
+scom_enscom openap.scom
+scom_enscom wpa2ap.scom
+scom_enscom wpa3ap.scom
+# For above, script sees 'scom_enscom openap.scom' and switches to openap.scom and once openap.scom completes, it comes back to open mother scom (example.scom in this case), and positions read-line to next to 'scom_enscom openap.scom', i.e. it will now read line 'scom_enscom wpa2ap.scom' and so on till scom FIFO is complete
 
 # 2. Daisy Chain - a mother scom will call to child1 scom file. child1 scom calls to child2 scom at it's EOF and so on. 
 # e.g. Daisy Chain below
 # example.scom is mother scom with EOF content below
-SCOM_enscom openap.scom
+scom_enscom openap.scom
 # openap.scom EOF content below
-SCOM_enscom wpa2ap.scom
+scom_enscom wpa2ap.scom
 # wpa2ap.scom EOF content below
-SCOM_enscom wpa3ap.scom
-# For above, script sees 'SCOM_enscom openap.scom' and switches to openap.scom and inside openap.scom it will encounter 'SCOM_enscom wpa2ap.scom' and switches to wpa2ap.scom and so on.
+scom_enscom wpa3ap.scom
+# For above, script sees 'scom_enscom openap.scom' and switches to openap.scom and inside openap.scom it will encounter 'scom_enscom wpa2ap.scom' and switches to wpa2ap.scom and so on.
 
 # 3. Hybrid Chain -  a Hybrid model created by mixing FIFO model with Daisy-chain models, if carefully used, it would work as expected.
 
