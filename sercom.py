@@ -60,7 +60,9 @@ from serial import Serial
 
 # Making this script version-agnostic, we need version number to abstract
 # and call version-specific Serial/File IO and other API functions
-gPyVer = platform.python_version()
+# Set python-version identifier as:
+# 2 for 2.x, 3 for 3.x, etc
+gPyVer = int (platform.python_version()[0])
 
 # Uncomment/Comment out the following to debug/run-normally the python script
 #import pdb; pdb.set_trace ()
@@ -146,7 +148,7 @@ def SysExit (msg) :
 def RecvSerialData (SerialPort) :
     try : Data = SerialPort.read (100)
     except serial.serialutil.SerialTimeoutException : Data = ''
-    if gPyVer.startswith("3.") : Data = Data.decode ()
+    if gPyVer != 2 : Data = Data.decode ()
     return Data
 
 # Function to send data over Serial port in python-version independent way
@@ -155,7 +157,7 @@ def RecvSerialData (SerialPort) :
 #          buf        - buffer containing data to be send over serial port
 # Return : number of data bytes sent over the serial port
 def SendSerialData (SerialPort, buf) :
-    if gPyVer.startswith("3.") : buf = buf.encode ()
+    if gPyVer != 2 : buf = buf.encode ()
     try : numTxBytes = SerialPort.write (buf)
     except serial.serialutil.SerialTimeoutException : numTxBytes = -1 
     SerialPort.flush ()
@@ -165,7 +167,7 @@ def SendSerialData (SerialPort, buf) :
 # Usage  : ReadConsoleInput (prompt)
 #          prompt     - prompt string (optional)
 # Return : Console input data given by user from stdin console
-if gPyVer.startswith("3.") : ReadConsoleInput = input
+if gPyVer != 2 : ReadConsoleInput = input
 else : ReadConsoleInput = raw_input
 
 # Function to strip the Command from the Response
@@ -556,8 +558,8 @@ try :
             bytesize=gSerByteSize, parity=gSerParity, stopbits=gSerStopBits, \
             timeout=gSerRdTimeout, xonxoff=gSerParity=='X', \
             rtscts=gSerParity=='R', dsrdtr=gSerParity=='D')
-    if gPyVer.startswith("3.") : gSerPort.write_timeout = gSerWrTimeout
-    else : gSerPort.writeTimeout = gSerWrTimeout
+    if gPyVer != 2 : gSerPort.writeTimeout = gSerWrTimeout
+    else : gSerPort.write_timeout = gSerWrTimeout
 except serial.serialutil.SerialException :
     SysExit ("Unable to open Serial port: " + gSerPortID)
 
