@@ -561,7 +561,8 @@ try :
     if gPyVer != 2 : gSerPort.writeTimeout = gSerWrTimeout
     else : gSerPort.write_timeout = gSerWrTimeout
 except serial.serialutil.SerialException :
-    SysExit ("Unable to open Serial port: " + gSerPortID)
+    SysExit ("Unable to open Serial port: " + \
+            gSerPortID + "\n" + str (sys.exc_info()[1]))
 
 # Set default status of Manual mode; refer -m option in SercomUsageStr
 if gScomStack == [] : gManualEn = True
